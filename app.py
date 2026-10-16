@@ -1,7 +1,9 @@
 import os
+import io
 import streamlit as st
 from PIL import Image, ImageOps
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 st.set_page_config(
     page_title="Gerador Veo 3 - Anúncios",
@@ -12,7 +14,10 @@ st.set_page_config(
 st.title("🎬 Gerador de Prompts Veo 3")
 st.caption("Crie anúncios comerciais com quatro cenas para vender produtos.")
 
-# Configuração da chave
+# ============================================================
+# CONFIGURAÇÃO DA CHAVE
+# ============================================================
+
 try:
     saved_key = st.secrets.get("GEMINI_API_KEY", "")
 except Exception:
@@ -22,6 +27,7 @@ default_key = saved_key or os.environ.get("GEMINI_API_KEY", "")
 
 with st.sidebar:
     st.header("Configurações do anúncio")
+
     api_key = st.text_input(
         "Chave da API Gemini",
         value=default_key,
@@ -30,7 +36,7 @@ with st.sidebar:
 
     model_name = st.selectbox(
         "Modelo Gemini",
-        ["gemini-2.5-flash", "gemini-2.0-flash"]
+        ["gemini-3.8-flash"]
     )
 
     formato = st.selectbox(
@@ -55,6 +61,10 @@ with st.sidebar:
         "Duração de cada cena",
         ["4 segundos", "6 segundos", "8 segundos"]
     )
+
+# ============================================================
+# INFORMAÇÕES DO PRODUTO
+# ============================================================
 
 st.subheader("1. Informações do produto")
 
@@ -103,6 +113,10 @@ estilo = st.selectbox(
     ]
 )
 
+# ============================================================
+# IMAGENS
+# ============================================================
+
 st.subheader("2. Imagens de referência")
 
 col3, col4 = st.columns(2)
@@ -114,7 +128,11 @@ with col3:
     )
 
     if foto_produto:
-        st.image(foto_produto, caption="Produto", use_container_width=True)
+        st.image(
+            foto_produto,
+            caption="Produto",
+            use_container_width=True
+        )
 
 with col4:
     foto_influencer = st.file_uploader(
@@ -134,6 +152,10 @@ st.info(
     "mas não garantem a preservação perfeita do rosto ou da embalagem."
 )
 
+# ============================================================
+# PREPARAR IMAGEM
+# ============================================================
+
 def preparar_imagem(arquivo):
     imagem = Image.open(arquivo)
     imagem = ImageOps.exif_transpose(imagem)
@@ -144,64 +166,138 @@ def preparar_imagem(arquivo):
     return imagem
 
 
+def imagem_para_part(arquivo):
+    imagem = preparar_imagem(arquivo)
+
+    buffer = io.BytesIO()
+    imagem.save(buffer, format="PNG")
+
+    return types.Part.from_bytes(
+        data=buffer.getvalue(),
+        mime_type="image/png"
+    )
+
+
+# ============================================================
+# PROMPT PRINCIPAL
+# ============================================================
+
 def criar_prompt():
     return f"""
 You are an expert e-commerce advertising creative director
-specialized in writing video prompts for Google Veo.
+specialized in writing high-quality video prompts for Google Veo.
 
 PRODUCT INFORMATION
-Category: {nicho or "Identify only what is visible in the reference"}
-Product name: {produto or "Do not invent a brand name"}
-Verified features: {beneficios or "Do not invent product claims"}
-Target audience: {publico or "People interested in this product category"}
-Offer: {oferta or "No specific offer; do not invent prices or discounts"}
-Call to action: {cta}
-Advertising style: {estilo}
-Video format: {formato}
-Duration per scene: {duracao}
-Spoken language: {idioma}
+
+Category: {nicho or "Identify only what is visible in the reference."}
+
+Product name:
+{produto or "Do not invent a brand name."}
+
+Verified features:
+{beneficios or "Do not invent product claims."}
+
+Target audience:
+{publico or "People interested in this product category."}
+
+Offer:
+{oferta or "No specific offer. Do not invent prices, discounts or deadlines."}
+
+Call to action:
+{cta}
+
+Advertising style:
+{estilo}
+
+Video format:
+{formato}
+
+Duration per scene:
+{duracao}
+
+Spoken language:
+{idioma}
+
 
 REFERENCE IMAGES
-Image 1 is the product.
-Image 2 is the influencer or presenter.
+
+Image 1 is the product reference.
+
+Image 2 is the influencer or presenter reference.
 
 Use both images as visual references.
-Maintain the same presenter, hairstyle, clothing, product design,
-packaging, colors and visible details across all four scenes,
-as far as the video model allows.
-Do not invent logos, labels, certifications or product properties.
 
-CREATE FOUR SEPARATE VIDEO PROMPTS:
+Maintain visual continuity across all four scenes whenever possible.
+
+Keep the same presenter, facial appearance, hairstyle, clothing,
+product design, packaging, colors and visible details.
+
+Do not invent logos, labels, certifications, prices,
+medical claims or product properties.
+
+
+CREATE FOUR SEPARATE VIDEO PROMPTS
 
 SCENE 1 — HOOK
-Create an attention-grabbing opening in the first seconds.
-Use a strong visual composition and a suitable camera movement.
+
+Create a powerful attention-grabbing opening during the first seconds.
+
+Use a strong visual composition, realistic environment,
+appropriate camera framing and cinematic camera movement.
+
 Introduce the product naturally.
 
+
 SCENE 2 — PRODUCT SHOWCASE
-Show the product clearly with detailed close-ups,
-appropriate lighting, texture and camera movement.
-Keep the packaging consistent with the reference.
+
+Show the product clearly.
+
+Use detailed close-ups, realistic lighting, texture,
+material details and professional camera movement.
+
+Keep the packaging visually consistent with the reference image.
+
 
 SCENE 3 — DEMONSTRATION
-Show a plausible and visually clear way to use or present the product.
+
+Show a plausible and visually clear way to use,
+hold or present the product.
+
 Do not invent results, medical claims or unverified benefits.
-Keep the same presenter and product.
+
+Keep the same presenter and product appearance.
+
 
 SCENE 4 — CALL TO ACTION
-Finish with a clear product hero shot and a natural invitation to buy.
-Use the specified call to action.
-Never invent a price, discount or deadline.
+
+Finish with a strong product hero shot.
+
+Create a natural invitation to purchase using the specified
+call to action.
+
+Never invent a price, discount, deadline or promotion.
+
 
 IMPORTANT RULES
+
 - Write the four video prompts in English.
-- Spoken dialogue, if any, must use the selected language.
-- Give each scene its own prompt, ready to copy separately.
-- Specify camera framing, camera movement, action, lighting,
-  setting, sound effects and dialogue where appropriate.
-- Keep visual continuity between all four scenes.
-- Avoid distorted hands, extra fingers, duplicated products,
-  changing faces, altered packaging and random on-screen text.
+- Spoken dialogue, if any, must be in the selected language.
+- Each scene must have its own independent prompt.
+- Make every prompt ready to copy directly into a video generator.
+- Specify camera framing.
+- Specify camera movement.
+- Specify subject action.
+- Specify lighting.
+- Specify environment.
+- Specify sound effects.
+- Specify dialogue when appropriate.
+- Maintain visual continuity between all four scenes.
+- Avoid distorted hands.
+- Avoid extra fingers.
+- Avoid duplicated products.
+- Avoid changing faces.
+- Avoid changing the packaging.
+- Avoid random text appearing on screen.
 - Leave clear space for captions to be added during editing.
 - Do not claim that a video has already been generated.
 - Do not invent facts about the product.
@@ -210,45 +306,89 @@ After the four prompts, provide brief editing suggestions in Portuguese.
 """
 
 
+# ============================================================
+# GERAÇÃO
+# ============================================================
+
 if st.button(
     "✨ GERAR OS 4 PROMPTS",
     type="primary",
     use_container_width=True
 ):
+
     if not api_key:
-        st.error("Informe a chave da API Gemini na barra lateral.")
+        st.error(
+            "Informe a chave da API Gemini na barra lateral."
+        )
 
     elif not foto_produto or not foto_influencer:
-        st.error("Envie a foto do produto e a foto da influenciadora.")
+        st.error(
+            "Envie a foto do produto e a foto da influenciadora."
+        )
 
     else:
+
         try:
-            genai.configure(api_key=api_key)
-            modelo = genai.GenerativeModel(model_name)
+            cliente = genai.Client(
+                api_key=api_key
+            )
 
-            imagem_produto = preparar_imagem(foto_produto)
-            imagem_influencer = preparar_imagem(foto_influencer)
+            imagem_produto = imagem_para_part(
+                foto_produto
+            )
 
-            with st.spinner("Criando seus prompts comerciais..."):
-                resposta = modelo.generate_content([
-                    criar_prompt(),
-                    "IMAGE 1 — PRODUCT REFERENCE:",
-                    imagem_produto,
-                    "IMAGE 2 — INFLUENCER REFERENCE:",
-                    imagem_influencer
-                ])
+            imagem_influencer = imagem_para_part(
+                foto_influencer
+            )
 
-            texto = getattr(resposta, "text", None)
+            prompt = criar_prompt()
+
+            conteudo = [
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_text(
+                            text=prompt
+                        ),
+                        types.Part.from_text(
+                            text="IMAGE 1 — PRODUCT REFERENCE:"
+                        ),
+                        imagem_produto,
+                        types.Part.from_text(
+                            text="IMAGE 2 — INFLUENCER REFERENCE:"
+                        ),
+                        imagem_influencer
+                    ]
+                )
+            ]
+
+            with st.spinner(
+                "Criando seus prompts comerciais..."
+            ):
+
+                resposta = cliente.models.generate_content(
+                    model=model_name,
+                    contents=conteudo
+                )
+
+            texto = getattr(
+                resposta,
+                "text",
+                None
+            )
 
             if texto:
-                st.success("Prompts gerados com sucesso!")
+
+                st.success(
+                    "Prompts gerados com sucesso!"
+                )
 
                 st.markdown(texto)
 
                 st.text_area(
                     "Todos os prompts para copiar",
                     value=texto,
-                    height=400
+                    height=500
                 )
 
                 st.download_button(
@@ -258,28 +398,45 @@ if st.button(
                     mime="text/plain",
                     use_container_width=True
                 )
+
             else:
+
                 st.error(
-                    "A resposta veio vazia. "
-                    "Tente novamente ou escolha outro modelo."
+                    "A resposta do Gemini veio vazia. "
+                    "Tente novamente."
                 )
 
         except Exception as erro:
-            st.error("Não foi possível gerar os prompts.")
-            st.caption(
-                "Verifique a chave da API, a conexão e a disponibilidade "
-                "do modelo selecionado."
+
+            st.error(
+                "Não foi possível gerar os prompts."
             )
-            st.code(str(erro))
+
+            st.caption(
+                "O aplicativo recebeu um erro da API Gemini."
+            )
+
+            st.code(
+                str(erro)
+            )
+
+
+# ============================================================
+# SEGURANÇA
+# ============================================================
 
 with st.expander("🔐 Segurança da chave da API"):
+
     st.write(
         "Não publique sua chave no código. "
-        "Em uma hospedagem, configure GEMINI_API_KEY nos Secrets. "
-        "A utilização da API pode estar sujeita a limites ou custos."
+        "Em uma hospedagem, configure GEMINI_API_KEY "
+        "nos Secrets. "
+        "A utilização da API pode estar sujeita a limites "
+        "ou custos."
     )
 
 st.caption(
     "Esta ferramenta gera prompts comerciais. "
-    "A geração dos vídeos acontece em uma ferramenta de vídeo compatível."
+    "A geração dos vídeos acontece em uma ferramenta "
+    "de vídeo compatível."
 )
